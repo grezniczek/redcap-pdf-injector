@@ -81,36 +81,42 @@ class pdfInjector extends \ExternalModules\AbstractExternalModule {
     public function userHasAccessToInjection($document_id) {
 
         $hasUserRightInjection = true;
-        //  Get fields for injection
-        $injectionFields = $this->getInjectionFields($document_id);
-        $fields = array_values(array_filter($injectionFields));
 
-        //  Get forms for project
-        $forms_injection = [];
-        $project = $this->getProject();
-        foreach ($fields as $key => $field) {
-            $form = $project->getFormForField($field);
-            if (!in_array($form, $forms))
-            {
-                $forms_injection[] = $form; 
+        //  Only run if data access restriction is enabled in module configuration
+        if($this->getProjectSetting('access-data-enabled')){
+
+            //  Get fields for injection
+            $injectionFields = $this->getInjectionFields($document_id);
+            $fields = array_values(array_filter($injectionFields));
+
+            //  Get forms for project
+            $forms_injection = [];
+            $project = $this->getProject();
+            foreach ($fields as $key => $field) {
+                $form = $project->getFormForField($field);
+                if (!in_array($form, $forms))
+                {
+                    $forms_injection[] = $form; 
+                }
             }
-        }
 
-        // Get user specific form access rights
-        $forms_rights = (current(\REDCap::getUserRights(USERID)))['forms'];
+            // Get user specific form access rights
+            $forms_rights = (current(\REDCap::getUserRights(USERID)))['forms'];
 
-        //  Get names of forms without access 
-        $forms_no_access = array_keys(array_filter($forms_rights, function($form){
-            return $form == 0;
-        }));
+            //  Get names of forms without access 
+            $forms_no_access = array_keys(array_filter($forms_rights, function($form){
+                return $form == 0;
+            }));
 
-        foreach ($forms_no_access as $key => $noAccessForm) {
+            foreach ($forms_no_access as $key => $noAccessForm) {
+                
+                if(in_array($noAccessForm, $forms_injection)){
+                    $hasUserRightInjection = false;
+                    break;
+                }
+
+            }
             
-            if(in_array($noAccessForm, $forms_injection)){
-                $hasUserRightInjection = false;
-                break;
-            }
-
         }
 
         return $hasUserRightInjection;

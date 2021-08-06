@@ -96,6 +96,16 @@
             "key": "disable-readme",
             "name": "<b>Disable Readme</b><br>Use this setting to not include a readme.txt into .zip file during Report Injection.",
             "type": "checkbox"
+        },
+        {
+            "key": "descr-access",
+            "type": "descriptive",
+            "name": "<b>Access Rights</b><br>Use the following to enable advanced settings to controll access to injections and the data used within."
+        },
+        {
+            "key": "access-data-enabled",
+            "type": "checkbox",
+            "name": "<b>Restrict Access on Data Level</b><br><i>Injections with field data that users has no access to will not be shown or rendered.</i>"
         }
     ],
 

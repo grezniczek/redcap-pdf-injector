@@ -92,14 +92,16 @@ print '<div style="width:950px;max-width:950px;" class="d-none d-md-block mt-3 m
 											<div class='card-body p-2'>{$activityBox}</div>
 										</div>	 
 										*/	
-						
+
+						$module->userHasAccessToInjection($key) ? $d = '' : $d='disabled';
+										
 						$injections .= "<td class='pt-3 pb-4' style='width:400px;border-left:0;'>
 										<div class='card'>
 										<div class='card-header bg-light py-1 px-3 clearfix' style='color:#004085;background-color:#d5e3f3 !important;'>
 											<div class='float-left'><i class='fas fa-file-pdf'></i> PDF</div>
 											<div class=\"btn-group nowrap float-right\" role=\"group\">
 											<div class=\"btn-group\" role=\"group\">
-												<button id=\"btnGroupDrop2\" type=\"button\" class=\"btn btn-link fs12 p-0 dropdown-toggle\" data-toggle=\"dropdown\" aria-haspopup=\"true\" aria-expanded=\"false\">
+												<button $d id=\"btnGroupDrop2\" type=\"button\" class=\"btn btn-link fs12 p-0 dropdown-toggle\" data-toggle=\"dropdown\" aria-haspopup=\"true\" aria-expanded=\"false\">
 												{$lang['design_699']}
 												</button>
 												<div class=\"dropdown-menu\" aria-labelledby=\"btnGroupDrop2\">

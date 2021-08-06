@@ -41,7 +41,7 @@ class pdfInjector extends \ExternalModules\AbstractExternalModule {
     *   -> Hooked to redcap_every_page_top
     *
     */
-    function redcap_every_page_top($project_id = null) {
+    function redcap_every_page_top($project_id = null) {     
 
         try {
             //  Check if user is logged in
@@ -76,6 +76,45 @@ class pdfInjector extends \ExternalModules\AbstractExternalModule {
             //  Do nothing...
         }
 
+    }
+
+    public function userHasAccessToInjection($document_id) {
+
+        $hasUserRightInjection = true;
+        //  Get fields for injection
+        $injectionFields = $this->getInjectionFields($document_id);
+        $fields = array_values(array_filter($injectionFields));
+
+        //  Get forms for project
+        $forms_injection = [];
+        $project = $this->getProject();
+        foreach ($fields as $key => $field) {
+            $form = $project->getFormForField($field);
+            if (!in_array($form, $forms))
+            {
+                $forms_injection[] = $form; 
+            }
+        }
+
+        // Get user specific form access rights
+        $forms_rights = (current(\REDCap::getUserRights(USERID)))['forms'];
+
+        //  Get names of forms without access 
+        $forms_no_access = array_keys(array_filter($forms_rights, function($form){
+            return $form == 0;
+        }));
+
+        foreach ($forms_no_access as $key => $noAccessForm) {
+            
+            if(in_array($noAccessForm, $forms_injection)){
+                $hasUserRightInjection = false;
+                break;
+            }
+
+        }
+
+        return $hasUserRightInjection;
+        
     }
 
    /**    
@@ -149,11 +188,11 @@ class pdfInjector extends \ExternalModules\AbstractExternalModule {
     */
     public function renderInjection($document_id, $record_id = null, $project_id = null, $outputFormat = null) {
 
-        $injections = self::getProjectSetting("pdf-injections");
-        $injection = $injections[$document_id];
-        //  Check if doc_id exists
-        if(!$injections[$document_id]) {
-            $this->errorResponse("Injection does not exist.");
+        //  Check if user has access to injection and abort if not
+        if(!$this->userHasAccessToInjection($document_id)){
+            header("HTTP/1.1 403 Forbidden");
+            header('Content-Type: application/json; charset=UTF-8');
+            die(json_encode(array("message"=>"Forbidden: User has no access to all forms within this Injection.")));
         }
 
         //  get Edoc 
@@ -161,9 +200,8 @@ class pdfInjector extends \ExternalModules\AbstractExternalModule {
         $type = pathinfo($path, PATHINFO_EXTENSION);
         $file = file_get_contents($path);
 
-
         //  Get Fields
-        $fields = $injection["fields"];
+        $injectionFields = $this->getInjectionFields($document_id);
 
         if($record_id != null){
             //  check if rec_id exists
@@ -172,7 +210,7 @@ class pdfInjector extends \ExternalModules\AbstractExternalModule {
                 $this->errorResponse("Record does not exist.");
             }
            
-            foreach ($fields as $key => &$value) {
+            foreach ($injectionFields as $key => &$value) {
                 
                 //  fetch variable value for each variable inside field
                 $fieldname = $value;
@@ -218,7 +256,7 @@ class pdfInjector extends \ExternalModules\AbstractExternalModule {
         //  Add checkbox support
         $pdf->useCheckboxParser = true;
 
-        $pdf->Load($fields,true);
+        $pdf->Load($injectionFields,true);
         $pdf->Merge();  // Does not support $pdf->Merge(true) yet (which would trigger PDF Flatten to "close" form fields via pdftk)        
         # Future support of PDF flattening would be implemented as optional module setting ensuring pdftk is installed on server
 
@@ -244,6 +282,18 @@ class pdfInjector extends \ExternalModules\AbstractExternalModule {
         } else {
             return $string;
         }
+    }
+
+    private function getInjectionFields($document_id){
+
+        $injections = self::getProjectSetting("pdf-injections");
+        $injection = $injections[$document_id];
+        //  Check if doc_id exists
+        if(!$injections[$document_id]) {
+            $this->errorResponse("Injection does not exist.");
+        }
+
+        return $injection["fields"];
     }
 
    /**
@@ -600,23 +650,27 @@ class pdfInjector extends \ExternalModules\AbstractExternalModule {
         $row = '<div class=\"row\">';
         $columns = '';
         foreach ($injections as $key => $injection) {
-            $thumbnailBase64 = $this->base64FromId($injection["thumbnail_id"]);
-            $column = '';
-            $column = '<div class=\"col-sm-2\">';
-            if($previewMode == 'modal') {
-                $column .= '<div onclick=\"STPH_pdfInjector.previewInjection('.$key.','.$injection["document_id"].', '.htmlspecialchars($record_id). ', '.htmlspecialchars($pid).');\" class=\"pdf-thumbnail thumbnail-hover my-shadow d-flex justify-content-center align-items-center\">';
-            } else {
-                $column .= '<div class=\"pdf-thumbnail thumbnail-hover my-shadow d-flex justify-content-center align-items-center\"><a class=\"dropdown-item\" id=\"submit-btn-inject-pdf-'.$key.'\" target=\"_blank\" href=\"'.$this->getUrl("preview.php").'&did='.$injection["document_id"].'&rid='.htmlspecialchars($record_id).'\">';
-            }
-            $column .= '<img id=\"pdf-preview-img\" src=\"'.$thumbnailBase64.'\">';
-            if($previewMode == 'modal') {
+            if($this->userHasAccessToInjection($injection["document_id"])) {
+
+                $thumbnailBase64 = $this->base64FromId($injection["thumbnail_id"]);
+                $column = '';
+                $column = '<div class=\"col-sm-2\">';
+                if($previewMode == 'modal') {
+                    $column .= '<div onclick=\"STPH_pdfInjector.previewInjection('.$key.','.$injection["document_id"].', '.htmlspecialchars($record_id). ', '.htmlspecialchars($pid).');\" class=\"pdf-thumbnail thumbnail-hover my-shadow d-flex justify-content-center align-items-center\">';
+                } else {
+                    $column .= '<div class=\"pdf-thumbnail thumbnail-hover my-shadow d-flex justify-content-center align-items-center\"><a class=\"dropdown-item\" id=\"submit-btn-inject-pdf-'.$key.'\" target=\"_blank\" href=\"'.$this->getUrl("preview.php").'&did='.$injection["document_id"].'&rid='.htmlspecialchars($record_id).'\">';
+                }
+                $column .= '<img id=\"pdf-preview-img\" src=\"'.$thumbnailBase64.'\">';
+                if($previewMode == 'modal') {
+                    $column .= '</div>';
+                } else {
+                    $column .= '</a></div>';
+                }
+                $column .= '<span style=\"display:block;margin-top:15px;text-align:center;font-weight:bold;letter-spacing:1px;\">'.$injection["title"].'</span>';
                 $column .= '</div>';
-            } else {
-                $column .= '</a></div>';
+                $columns .= $column;
+
             }
-            $column .= '<span style=\"display:block;margin-top:15px;text-align:center;font-weight:bold;letter-spacing:1px;\">'.$injection["title"].'</span>';
-            $column .= '</div>';
-            $columns .= $column;
         }
         $row .= $columns . '</div>';
         $body = '<div class=\"container-fluid\">'.$row.'</div>';
@@ -654,11 +708,14 @@ class pdfInjector extends \ExternalModules\AbstractExternalModule {
                 <div class="dropdown-menu">          
                 <?php
                 foreach ($injections as $key => $injection) {
-                    if($previewMode == 'modal') {
-                        print '<a class="dropdown-item" href="javascript:;" id="submit-btn-inject-pdf-'.$key.'" onclick="STPH_pdfInjector.previewInjection('.$key.','.$injection["document_id"].', '.htmlspecialchars($record_id). ', '.htmlspecialchars($pid).');">'.$injection["title"].'</a>';
-                    } else {
-                        print '<a class="dropdown-item" id="submit-btn-inject-pdf-'.$key.'" target="_blank" href="'.$this->getUrl("preview.php").'&did='.$injection["document_id"].'&rid='.htmlspecialchars($record_id).'">'.$injection["title"].'</a>';
+                    if($this->userHasAccessToInjection($injection["document_id"])) {
+                        if($previewMode == 'modal') {
+                            print '<a class="dropdown-item" href="javascript:;" id="submit-btn-inject-pdf-'.$key.'" onclick="STPH_pdfInjector.previewInjection('.$key.','.$injection["document_id"].', '.htmlspecialchars($record_id). ', '.htmlspecialchars($pid).');">'.$injection["title"].'</a>';
+                        } else {
+                            print '<a class="dropdown-item" id="submit-btn-inject-pdf-'.$key.'" target="_blank" href="'.$this->getUrl("preview.php").'&did='.$injection["document_id"].'&rid='.htmlspecialchars($record_id).'">'.$injection["title"].'</a>';
+                        }
                     }
+
                 }
                 ?>
                 </div>           
@@ -715,10 +772,13 @@ class pdfInjector extends \ExternalModules\AbstractExternalModule {
                         <?php
                             //  To Do: Clean this up...
                             foreach ($this->injections as $key => $injection) {
-                                $url = $this->getUrl("batch.php") . '&did=' . $injection["document_id"] . '&rid='. $this->report_id;
-                                $button = '<a target="_blank" href="'.$url.'" class="jqbuttonmed ui-button ui-corner-all ui-widget" style="color:#34495e;font-size:12px;"><i class="fas fa-syringe"></i>'.$injection["title"].'</a>';
-                                $option = '<option value="'.$injection["document_id"].'">'.$injection["title"].'</option>';
-                                echo $option;
+                                //  Check if user has access to injection (unclean)
+                                if($this->userHasAccessToInjection($injection["document_id"])) {
+                                    $url = $this->getUrl("batch.php") . '&did=' . $injection["document_id"] . '&rid='. $this->report_id;
+                                    $button = '<a target="_blank" href="'.$url.'" class="jqbuttonmed ui-button ui-corner-all ui-widget" style="color:#34495e;font-size:12px;"><i class="fas fa-syringe"></i>'.$injection["title"].'</a>';
+                                    $option = '<option value="'.$injection["document_id"].'">'.$injection["title"].'</option>';
+                                    echo $option;
+                                }
                             }
                         ?>
                         </select>
